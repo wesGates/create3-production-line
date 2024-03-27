@@ -4,7 +4,6 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
-
 from rclpy.action.client import ActionClient
 from rclpy.action.client import GoalStatus
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
@@ -40,6 +39,11 @@ import threading
 import paho.mqtt.client as mqtt
 from brokerSenderv2 import mqttc
 
+# Node Imports
+from dock_status_node import DockStatusMonitorNode
+from ir_status_node import IrMonitorNode
+from odometry_node import OdomNode
+
 # Globals
 start_note = [ AudioNote(frequency=600, max_runtime=Duration(sec=0, nanosec= 50000000))]
 end_note =   [ AudioNote(frequency=784, max_runtime=Duration(sec=0, nanosec= 50000000))]
@@ -53,13 +57,6 @@ error_notes = [
 	AudioNote(frequency=350, max_runtime=Duration(sec=0, nanosec=100000000))
 ]
 
-# Node Imports
-from dock_status_node import DockStatusMonitorNode
-from ir_status_node import IrMonitorNode
-from odometry_node import OdomNode
-
-
-
 topic = "vandalrobot"
 
 def reportSender(label,
@@ -70,10 +67,9 @@ def reportSender(label,
 	Used to send a report at the beginning and end of every action.
 
 	ex)
-	reportSender("dock",isAtBase1=True,)
-	reportSender("undock",isReady=False)
-	reportSender("drive")
-	reportSender("drive_done")
+	reportSender("dock_start",isAtBase1=True,)
+	reportSender("dock_done")
+
 	"""
 
 	isdock= 'get topic'
@@ -199,7 +195,7 @@ class Roomba(Node):
 
 
 
-	##### Methods for initial movements #####
+	##### Methods for movements #####
 	def undock(self):
 		print("Trying to report")
 		reportSender("undock", ismoving=True)
@@ -268,6 +264,9 @@ class Roomba(Node):
 	def drive_amnt(self, distance):
 		print("Driving amount:", distance, "m")
 
+		print("Trying to report")
+		reportSender("undock", ismoving=True)
+
 		self.chirp(start_note)
 		self.drive_ac.wait_for_server()
 		drive_goal = DriveDistance.Goal()
@@ -275,6 +274,9 @@ class Roomba(Node):
 		self.drive_ac.send_goal(drive_goal)
 		
 		time.sleep(1)  # Consider using async
+
+		print("Trying to report done")
+		reportSender("undock_done")
 		self.chirp(end_note)
 
 	def drive_amnt_async(self, distance):
@@ -341,10 +343,10 @@ class Roomba(Node):
 
 	def takeoff(self):
 		try:
-			self.undock()
-			self.reset_pose()
-			self.record_pose()
-			time.sleep(1)
+			# self.undock()
+			# self.reset_pose()
+			# self.record_pose()
+			# time.sleep(1)
 
 			# # From home to beaker
 			# self.rotate_amnt(-pi/2)
@@ -392,8 +394,12 @@ class Roomba(Node):
 
 
 
-			self.navigate_to_recorded_pose()
-			self.rotate_amnt(pi)
+			# self.navigate_to_recorded_pose()
+			# self.rotate_amnt(pi)
+
+			############ Broker testing
+			self.drive_amnt(0.1)
+			time.sleep(1)		
 
 		except Exception as error:
 			roomba.chirp(error_notes)
@@ -410,14 +416,15 @@ if __name__ == '__main__':
 	exec.add_node(ir_sensor)
 	exec.add_node(odometry_sensor)
 
+	mqttc.loop_start()
+
 	time.sleep(0.1)
 	roomba.chirp(ready_notes)
-	stop_event = threading.Event()
-	server_thread  = threading.Thread(target=mqttc.loop_start())
-	server_thread.start()
 
 	keycom = KeyCommander([
 		(KeyCode(char='u'), roomba.takeoff),
+		# (KeyCode(char='r'), roomba.rotate_amnt(pi/6)), # For debugging broker messages only
+		# (KeyCode(char='s'), roomba.rotate_amnt(pi/6)), # For debugging broker messages only
 	])
 	print(" Press 'U' to intitiate launch")
 
