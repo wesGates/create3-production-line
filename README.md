@@ -34,10 +34,10 @@ The scripts are located in the `src` folder. Here are the key scripts:
 
 ## Installation
 
-1. Install ROS2 Humble on Ubuntu 22.04 LTS.
+1. Install ROS2 Humble on Ubuntu 22.04 LTS following along with the official documentation.
 2. Clone the repository into your ROS2 workspace.
 3. In the `src` folder, build the workspace with `colcon build`.
-4. Source the workspace environment.
+4. Source the workspace environment: source install/setup.sh.
 
 ## Usage
 
