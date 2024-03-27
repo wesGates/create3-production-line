@@ -1,11 +1,11 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from std_msgs.msg import String
+from std_msgs.msg import String,Bool
 from irobot_create_msgs.msg import DockStatus
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Header, String, Int32, Float32, UInt8, Int16 # Some topics have specific datatypes (POTENTIALLY USELESS!!!)
+# from std_msgs.msg import Header, String, Int32, Float32, UInt8, Int16 # Some topics have specific datatypes (POTENTIALLY USELESS!!!)
 
 
 class DockStatusMonitorNode(Node):
@@ -13,7 +13,7 @@ class DockStatusMonitorNode(Node):
         super().__init__('dock_sensor')
 
         # Publisher for DockStatus as a String
-        self.dock_status_publisher_ = self.create_publisher(String, f'/{namespace}/check_dock_status', 10)
+        self.dock_status_publisher_ = self.create_publisher(Bool, f'/{namespace}/check_dock_status', 10)
 
         # # Publisher for PoseStamped messages
         # self.pose_publisher_ = self.create_publisher(PoseStamped, f'/{namespace}/pose_stamped', 10)
@@ -40,8 +40,8 @@ class DockStatusMonitorNode(Node):
 
     def publish_dock_status(self):
         # Create a String message with the current dock status
-        msg = String()
-        msg.data = str(self.current_dock_status)
+        msg = Bool()
+        msg.data =self.current_dock_status
         # Publish the message
         self.dock_status_publisher_.publish(msg)
 

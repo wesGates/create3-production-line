@@ -39,6 +39,9 @@ class OdomNode(Node):
             self.pose_publisher_.publish(pose_stamped_msg)
             self.get_logger().info('PoseStamped message published.')
 
+            # DEBUG
+            print(pose_stamped_msg)
+
 
 
 
