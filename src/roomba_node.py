@@ -24,21 +24,16 @@ from builtin_interfaces.msg import Duration
 # key_commander stuff
 from pynput.keyboard import KeyCode
 from key_commander import KeyCommander
-
 # Python Packages
 import random, time
 from math import pi
 from collections import deque
-import json
+
 
 # Threading
 from rclpy.executors import MultiThreadedExecutor
 from threading import RLock
-import threading
 
-# Broker
-import paho.mqtt.client as mqtt
-from brokerSenderv2 import mqttc
 
 # Globals
 start_note = [ AudioNote(frequency=600, max_runtime=Duration(sec=0, nanosec= 50000000))]
@@ -58,52 +53,9 @@ from dock_status_node import DockStatusMonitorNode
 from ir_status_node import IrMonitorNode
 from odometry_node import OdomNode
 
-
-
-topic = "vandalrobot"
-
-def reportSender(label,
-				isAtBase1=False, isAtBase2=False, isAtBase3=False,
-				isReady=False, ismoving=False, withDice=False
-				):
-	""""
-	Used to send a report at the beginning and end of every action.
-
-	ex)
-	reportSender("dock",isAtBase1=True,)
-	reportSender("undock",isReady=False)
-	reportSender("drive")
-	reportSender("drive_done")
-	"""
-
-	isdock= 'get topic'
-	data = {
-		"messageType": "Report",
-		"node": "roomba",
-		"nodeId": "gatesroomba12",
-		"productLine": "moscow",
-		"roombareport": {
-			"isDock": isdock,
-			"label":label,
-			"isReady": True,
-			"withDice": True,
-			"isAtBase1": True,
-			"isAtBase2": True,
-			"isAtBase3": True,
-			"ismoving": True,
-			"position": ["<x>", "<y>", "<z>"],
-			"Fault": {
-			}
-		},
-		"date": "<date>T<time>"
-	}
-	
-	mqttc.publish(topic, json.dumps(data))
-
-
 # Initialize and connect to other nodes
 rclpy.init()
-namespace = 'create3_05AE'
+namespace = 'create3_0561'
 dock_sensor = DockStatusMonitorNode(namespace)
 ir_sensor = IrMonitorNode(namespace)
 odometry_sensor = OdomNode(namespace)
@@ -136,8 +88,6 @@ class Roomba(Node):
 		cb_Action = MutuallyExclusiveCallbackGroup()
 		cb_chirp  = MutuallyExclusiveCallbackGroup()
 
-		self.dock_ac = ActionClient(self, Dock, f'/{namespace}/dock',
-							  				callback_group=cb_Action)
 		self.undock_ac = ActionClient(self, Undock, f'/{namespace}/undock',
 								 			callback_group=cb_Action)
 		self.drive_ac = ActionClient(self, DriveDistance, f'/{namespace}/drive_distance', 
@@ -201,8 +151,6 @@ class Roomba(Node):
 
 	##### Methods for initial movements #####
 	def undock(self):
-		print("Trying to report")
-		reportSender("undock", ismoving=True)
 		self.chirp(start_note)
 
 		# Read current dock status, then undock
@@ -212,20 +160,6 @@ class Roomba(Node):
 		self.undock_ac.send_goal(undock_goal) # Send goal blocking
 		
 		self.dock_sensor.publish_dock_status() # Tells the publisher to update the dock status
-		time.sleep(1)
-
-		print("Trying to report done")
-		reportSender("undock_done")
-		self.chirp(end_note)
-
-	def dock(self):
-		self.chirp(start_note)
-		self.chirp(start_note)
-
-		self.dock_ac.wait_for_server()
-		dock_goal = Dock.Goal()
-		self.dock_ac.send_goal(dock_goal)
-		self.dock_sensor.publish_dock_status()
 		time.sleep(1)
 		self.chirp(end_note)
 
@@ -263,6 +197,7 @@ class Roomba(Node):
 			self.get_logger().info("PoseStamped recorded.")
 		else:
 			self.get_logger().error("No current pose available to record.")
+
 
 
 	def drive_amnt(self, distance):
@@ -338,6 +273,74 @@ class Roomba(Node):
 			self.get_logger().error("No pose has been recorded.")
 
 
+	def docking(self):
+		while self.latest_dock_status != 'True':  # Ensuring the comparison is to a string if that's what's expected
+			try:
+				self.dock_sensor.publish_dock_status()
+				self.dock_sensor.publish_dock_status()
+				self.latest_ir_opcode = self.ir_sensor.publish_ir_opcode()
+
+				# Add the latest opcode to the history
+				print("Dock function IrOpcode readout:", self.latest_ir_opcode)
+				print("Start- latest_dock_status:", self.latest_dock_status)
+
+				# Check if the latest_ir_opcode has been updated
+				if self.latest_ir_opcode is not None:
+					if self.latest_dock_status == True:
+						break
+
+					if self.latest_ir_opcode == 160 or self.latest_ir_opcode == 161:
+						# Reiterate, do nothing just continue the loop
+						self.ir_opcode_history.append(self.latest_ir_opcode)
+						self.get_logger().info(f"IR Opcode {self.latest_ir_opcode} seen, reiterating.")
+						self.dock_sensor.publish_dock_status()
+
+
+					elif self.latest_ir_opcode == 168:
+						# Rotate right slightly
+						self.rotate_amnt_async(pi/36)
+						time.sleep(0.2)
+						self.get_logger().info("Rotating right slightly due to Red Buoy detection.")
+						self.ir_opcode_history.clear()  # Clear the history after movement
+						self.dock_sensor.publish_dock_status()
+
+					
+					elif self.latest_ir_opcode == 164:
+						# Rotate left slightly
+						self.rotate_amnt_async(-pi/36)
+						time.sleep(0.2)
+
+						self.get_logger().info("Rotating left slightly due to Green Buoy detection.")
+						self.ir_opcode_history.clear()  # Clear the history after movement
+						self.dock_sensor.publish_dock_status()
+					
+					elif self.latest_ir_opcode == 172:
+						# Drive forward a small amount
+						self.drive_amnt_async(0.01)
+						time.sleep(0.2)
+
+						self.get_logger().info("Driving forward due to Red Buoy and Green Buoy detection.")
+						self.ir_opcode_history.clear()  # Clear the history after movement
+						self.dock_sensor.publish_dock_status()
+
+				if len(self.ir_opcode_history) == self.ir_opcode_history.maxlen:
+					self.drive_amnt(-0.3)
+					self.navigate_to_recorded_pose()
+					self.get_logger().info("Backing up due to continuous 160 or 161 opcodes.")
+					self.ir_opcode_history.clear()  # Clear the history after movement
+
+				# Print the current count of the deque
+				print("Current opcode history count:", len(self.ir_opcode_history))
+				self.dock_sensor.publish_dock_status()
+				# print("END- latest_dock_status:", self.latest_dock_status)
+
+				print("\n")
+				time.sleep(0.3)  # Sleep for throttling
+			except Exception as e:
+				self.get_logger().error('Error in docking loop: {}'.format(e))
+				break  # Or handle the exception appropriately
+
+
 
 	def takeoff(self):
 		try:
@@ -345,56 +348,15 @@ class Roomba(Node):
 			self.reset_pose()
 			self.record_pose()
 			time.sleep(1)
-
-			# # From home to beaker
-			# self.rotate_amnt(-pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(1.3)
-			# time.sleep(1)
-			# self.rotate_amnt(pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(2.0)
-			# time.sleep(1)
-			# # send a report
-
-			# self.dock()
-			# time.sleep(1)
-
-			# # From beaker to bunsen
-			# self.rotate_amnt(pi)
-			# self.drive_amnt(2.65)
-			# time.sleep(1)
-			# self.rotate_amnt(pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(2.75)  # Drive forward half a meter
-			# time.sleep(1)
-			# self.rotate_amnt(pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(2.75)
-			# time.sleep(1)
-
-
-			# # From bunsen to home
-			# self.rotate_amnt(pi)
-			# self.drive_amnt(2.6)
-			# time.sleep(1)
-			# self.rotate_amnt(-pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(2.60)
-			# time.sleep(1)
-			# self.rotate_amnt(-pi/4)
-			# time.sleep(1)			
-			# self.drive_amnt(1.5)
-			# time.sleep(1)
-			# self.rotate_amnt(3*pi/4)
-			# time.sleep(1)
-			# self.drive_amnt(0.75)
-
-
-
+			self.drive_amnt(0.5)
+			time.sleep(1)
+			random_angle = random.uniform(-pi, pi)  # Random angle between -pi and pi
+			self.rotate_amnt(random_angle)
+			time.sleep(1)
+			self.drive_amnt(0.5)  # Drive forward half a meter
 			self.navigate_to_recorded_pose()
 			self.rotate_amnt(pi)
-
+			self.docking()
 		except Exception as error:
 			roomba.chirp(error_notes)
 			self.get_logger().error(f"Error in takeoff: {error}") # Error logging
@@ -412,9 +374,6 @@ if __name__ == '__main__':
 
 	time.sleep(0.1)
 	roomba.chirp(ready_notes)
-	stop_event = threading.Event()
-	server_thread  = threading.Thread(target=mqttc.loop_start())
-	server_thread.start()
 
 	keycom = KeyCommander([
 		(KeyCode(char='u'), roomba.takeoff),
