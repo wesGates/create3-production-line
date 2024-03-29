@@ -40,7 +40,7 @@ class OdomNode(Node):
             self.get_logger().info('PoseStamped message published.')
 
             # DEBUG
-            print(pose_stamped_msg)
+            # print(pose_stamped_msg)
 
 
 

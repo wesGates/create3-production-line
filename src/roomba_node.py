@@ -38,8 +38,8 @@ from threading import RLock
 import threading
 
 # Broker
-import paho.mqtt.client as mqtt
-from brokerSenderv2 import mqttc
+# import paho.mqtt.client as mqtt
+from brokerSender import mqttc
 
 # Node Imports
 from dock_status_node import DockStatusMonitorNode
@@ -113,6 +113,7 @@ class Roomba(Node):
 		# Services:
 		# ResetPose service client and initialize PoseStamped variable for position reset using odometry
 		self.reset_pose_srv = self.create_client(ResetPose, f'/{namespace}/reset_pose')
+		
 		# Ensure service is available
 		while not self.reset_pose_srv.wait_for_service(timeout_sec=1.0):
 			self.get_logger().info('ResetPose service not available, waiting again...')
@@ -123,14 +124,17 @@ class Roomba(Node):
 		self.latest_ir_opcode = None
 		self.ir_opcode_history = deque(maxlen=20)  # A deque to store the history of opcodes
 
-	def reportSender(self, label,
-				isAtBase1=False, isAtBase2=False, isAtBase3=False,
-				isReady=False, isMoving=False, iswithDice=False
-				):
+	def reportSender(self, label="Undefined", action="Undefined",
+					isAtBase1=False, isAtBase2=False, isAtBase3=False,
+					isReady=False, isMoving=False, iswithDice=False
+					):
 		""""
 		Used to send a report at the beginning and end of every action.
 		Defaults to False.
 		"""
+
+		self.record_pose() # This should update the recorded pose whenever the report is sent
+		# time.sleep(1)
 
 		data = {
 			"messageType": "Report",
@@ -139,6 +143,7 @@ class Roomba(Node):
 			"productLine": "moscow",
 			"roombareport": {
 				"isDock": self.latest_dock_status,
+				"action": action,
 				"label":label,
 				"isReady": isReady,
 				"withDice": iswithDice,
@@ -146,8 +151,11 @@ class Roomba(Node):
 				"isAtBase2": isAtBase2,
 				"isAtBase3": isAtBase3,
 				"isMoving": isMoving,
-				# "position": ["<x>", "<y>", "<z>"], # Integers
-				"position": [1, 2, 3], # Integers
+				"position": [
+
+							int(self.latest_pose_stamped.pose.position.x*1000),
+							int(self.latest_pose_stamped.pose.position.y*1000),
+							int(self.latest_pose_stamped.pose.position.z*1000)],
 
 				"Fault": {
 				}
@@ -165,7 +173,7 @@ class Roomba(Node):
 
 	def pose_callback(self, msg):
 		self.latest_pose_stamped = msg # NavToPosition needs the whole thang
-		self.get_logger().info(f"Received stamped pose status: {self.latest_pose_stamped}")
+		# self.get_logger().info(f"Received stamped pose status: {self.latest_pose_stamped}")
 
 
 	def ir_opcode_callback(self, msg):
@@ -196,8 +204,8 @@ class Roomba(Node):
 
 	##### Methods for movements #####
 	def undock(self):
-		print("Sending report... \n")
-		self.reportSender("undock", isMoving=True)
+		# print("Sending report... \n")
+		# self.reportSender("undock", isMoving=True)
 		self.chirp(start_note)
 
 		# Read current dock status, then undock
@@ -209,7 +217,7 @@ class Roomba(Node):
 		self.dock_sensor.publish_dock_status() # Tells the publisher to update the dock status
 		time.sleep(1)
 
-		print("Report sent \n")
+		# print("Report sent \n")
 		self.chirp(end_note)
 
 
@@ -254,7 +262,13 @@ class Roomba(Node):
 		time.sleep(1) # Provides enough time to avoid errors, apparently
 		if self.latest_pose_stamped is not None:
 			self.recorded_pose = self.latest_pose_stamped
-			self.get_logger().info("PoseStamped recorded.")
+			self.get_logger().info("PoseStamped recorded:\n")
+			
+			# DEBUG: Check the coordinates
+			# print(int(self.latest_pose_stamped.pose.position.x*1000))
+			# print("\n", int(self.latest_pose_stamped.pose.position.y*1000))
+			# print("\n", int(self.latest_pose_stamped.pose.position.z*1000))
+
 		else:
 			self.get_logger().error("No current pose available to record.")
 
@@ -262,8 +276,8 @@ class Roomba(Node):
 	def drive_amnt(self, distance):
 		print("Driving amount:", distance, "m")
 
-		print("Sending report... \n")
-		self.reportSender("undock", isMoving=True)
+		# print("Sending report... \n")
+		# self.reportSender("undock", isMoving=True)
 
 		self.chirp(start_note)
 		self.drive_ac.wait_for_server()
@@ -273,8 +287,8 @@ class Roomba(Node):
 		
 		time.sleep(1)  # Consider using async
 
-		print("Report sent \n")
-		self.reportSender("undock_done")
+		# print("Report sent \n")
+		# self.reportSender("undock_done")
 		self.chirp(end_note)
 
 
@@ -338,6 +352,7 @@ class Roomba(Node):
 		else:
 			self.chirp(error_notes)
 			self.get_logger().error("No pose has been recorded.")
+
 
 	def docking(self):
 		while self.latest_dock_status != 'True':  # Ensuring the comparison is to a string if that's what's expected
@@ -409,65 +424,297 @@ class Roomba(Node):
 
 	def takeoff(self):
 		try:
-			# self.undock()
-			# self.reset_pose()
-			# self.record_pose()
-			# time.sleep(1)
+			
+			# Define the process labels to be forwarded to the broker
+			roomba_label_1 = "Traveling from base1 to base2."
+			roomba_label_2 = "Traveling from base2 to base3."
+			roomba_label_3 = "Traveling from base3 to base1."
+			roomba_label_4 = "Finished cycle."
 
-			# # From home to beaker
-			# self.rotate_amnt(-pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(1.3)
-			# time.sleep(1)
-			# self.rotate_amnt(pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(2.0)
-			# time.sleep(1)
-			# # send a report
-
-			# self.dock()
-			# time.sleep(1)
-
-			# # From beaker to bunsen
-			# self.rotate_amnt(pi)
-			# self.drive_amnt(2.65)
-			# time.sleep(1)
-			# self.rotate_amnt(pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(2.75)  # Drive forward half a meter
-			# time.sleep(1)
-			# self.rotate_amnt(pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(2.75)
-			# time.sleep(1)
-
-
-			# # From bunsen to home
-			# self.rotate_amnt(pi)
-			# self.drive_amnt(2.6)
-			# time.sleep(1)
-			# self.rotate_amnt(-pi/2)
-			# time.sleep(1)
-			# self.drive_amnt(2.60)
-			# time.sleep(1)
-			# self.rotate_amnt(-pi/4)
-			# time.sleep(1)			
-			# self.drive_amnt(1.5)
-			# time.sleep(1)
-			# self.rotate_amnt(3*pi/4)
-			# time.sleep(1)
-			# self.drive_amnt(0.75)
-
-
-
-			# self.navigate_to_recorded_pose()
-			# self.rotate_amnt(pi)
-
-			############ Broker testing
+			# ### Actions for process 1 ###
+			# Undock and reset pose
+			self.reportSender(
+				roomba_label_1, 
+				action="undock_start", 
+				isAtBase1=True, 
+				isMoving=False
+			)
 			self.undock()
-			time.sleep(1)
-			self.drive_amnt(0.1)
-			time.sleep(1)		
+			self.reportSender(
+				roomba_label_1, 
+				action="undock_done", 
+				isAtBase1=False, 
+				isMoving=True
+			)
+
+			# rotate amount
+			self.reportSender(
+				roomba_label_1,
+				action="rotate_start",
+				isMoving=True
+			)
+			self.rotate_amnt(-pi/2)
+			self.reportSender(
+				roomba_label_1,
+				action="rotate_done",
+				isMoving=True
+			)
+
+			# drive amount
+			self.reportSender(
+				roomba_label_1,
+				action="drive_start",
+				isMoving=True
+			)
+			self.drive_amnt(1.3)
+			self.reportSender(
+				roomba_label_1,
+				action="drive_done",
+				isMoving=True
+			)
+
+			# rotate amount
+			self.reportSender(
+				roomba_label_1,
+				action="rotate_start",
+				isMoving=True
+			)
+			self.rotate_amnt(pi/2)
+			self.reportSender(
+				roomba_label_1,
+				action="rotate_done",
+				isMoving=True
+			)
+
+			# drive amount
+			self.reportSender(
+				roomba_label_1,
+				action="drive_start",
+				isMoving=True
+			)
+			self.drive_amnt(2.0)
+			self.reportSender(
+				roomba_label_1,
+				action="drive_done",
+				isMoving=True
+			)
+			
+			# dock
+			self.reportSender(
+				roomba_label_1,
+				action="dock_start",
+				isMoving=True
+			)
+			self.dock()
+			self.reportSender(
+				roomba_label_1,
+				action="dock_done",
+				isMoving=False,
+				isAtBase2=True
+			)		
+			time.sleep(3)
+
+			### Actions for process 2 ###
+			self.reportSender(
+				roomba_label_2, 
+				action="undock_start", 
+				isAtBase2=True, 
+				isMoving=False
+			)
+			self.undock()
+			self.reportSender(
+				roomba_label_2, 
+				action="undock_done", 
+				isAtBase2=False, 
+				isMoving=True
+			)
+			
+			# drive amount
+			self.reportSender(
+				roomba_label_2,
+				action="drive_start",
+				isMoving=True
+			)
+			self.drive_amnt(2.65)
+			self.reportSender(
+				roomba_label_2,
+				action="drive_done",
+				isMoving=True
+			)
+			
+			# rotate amount
+			self.reportSender(
+				roomba_label_2,
+				action="rotate_start",
+				isMoving=True
+			)
+			self.rotate_amnt(pi/2)
+			self.reportSender(
+				roomba_label_2,
+				action="rotate_done",
+				isMoving=True
+			)
+
+			# drive amount
+			self.reportSender(
+				roomba_label_2,
+				action="drive_start",
+				isMoving=True
+			)
+			self.drive_amnt(2.75)
+			self.reportSender(
+				roomba_label_2,
+				action="drive_done",
+				isMoving=True
+			)
+			
+			# rotate amount
+			self.reportSender(
+				roomba_label_2,
+				action="rotate_start",
+				isMoving=True
+			)
+			self.rotate_amnt(pi/2)
+			self.reportSender(
+				roomba_label_2,
+				action="rotate_done",
+				isMoving=True
+			)
+
+			# drive amount
+			self.reportSender(
+				roomba_label_2,
+				action="drive_start",
+				isMoving=True
+			)
+			self.drive_amnt(2.5)
+			self.reportSender(
+				roomba_label_2,
+				action="drive_done",
+				isMoving=True
+			)
+			
+			# dock
+			self.reportSender(
+				roomba_label_2,
+				action="dock_start",
+				isMoving=True
+			)
+			self.dock()
+			self.reportSender(
+				roomba_label_2,
+				action="dock_done",
+				isMoving=False,
+				isAtBase3=True
+			)		
+
+			### Actions for process 3 ###
+			self.reportSender(
+				roomba_label_3, 
+				action="undock_start", 
+				isAtBase3=True, 
+				isMoving=False
+			)
+			self.undock()
+			self.reportSender(
+				roomba_label_3, 
+				action="undock_done", 
+				isAtBase3=False, 
+				isMoving=True
+			)
+			
+			# drive amount
+			self.reportSender(
+				roomba_label_3,
+				action="drive_start",
+				isMoving=True
+			)
+			self.drive_amnt(2.65)
+			self.reportSender(
+				roomba_label_3,
+				action="drive_done",
+				isMoving=True
+			)
+			
+			# rotate amount
+			self.reportSender(
+				roomba_label_3,
+				action="rotate_start",
+				isMoving=True
+			)
+			self.rotate_amnt(-pi/2)
+			self.reportSender(
+				roomba_label_3,
+				action="rotate_done",
+				isMoving=True
+			)
+
+			# drive amount
+			self.reportSender(
+				roomba_label_3,
+				action="drive_start",
+				isMoving=True
+			)
+			self.drive_amnt(2.60)
+			self.reportSender(
+				roomba_label_3,
+				action="drive_done",
+				isMoving=True
+			)
+			
+			# rotate amount
+			self.reportSender(
+				roomba_label_3,
+				action="rotate_start",
+				isMoving=True
+			)
+			self.rotate_amnt(-pi/6)
+			self.reportSender(
+				roomba_label_3,
+				action="rotate_done",
+				isMoving=True
+			)
+
+			# drive amount
+			self.reportSender(
+				roomba_label_3,
+				action="drive_start",
+				isMoving=True
+			)
+			self.drive_amnt(1.75)
+			self.reportSender(
+				roomba_label_3,
+				action="drive_done",
+				isMoving=True
+			)
+
+			# rotate amount
+			self.reportSender(
+				roomba_label_3,
+				action="rotate_start",
+				isMoving=True
+			)
+			self.rotate_amnt(4*pi/6)
+			self.reportSender(
+				roomba_label_3,
+				action="rotate_done",
+				isMoving=True
+			)
+
+			# dock
+			self.reportSender(
+				roomba_label_3,
+				action="dock_start",
+				isMoving=True
+			)
+			self.dock()
+			self.reportSender(
+				roomba_label_3,
+				action="dock_done",
+				isMoving=False,
+				isAtBase1=True
+			)		
+
 
 		except Exception as error:
 			roomba.chirp(error_notes)
