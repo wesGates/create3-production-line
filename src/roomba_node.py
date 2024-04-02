@@ -434,14 +434,14 @@ class Roomba(Node):
 			# ### Actions for process 1 ###
 			# Undock and reset pose
 			self.reportSender(
-				roomba_label_1, 
+				label=roomba_label_1, 
 				action="undock_start", 
 				isAtBase1=True, 
 				isMoving=False
 			)
 			self.undock()
 			self.reportSender(
-				roomba_label_1, 
+				label=roomba_label_1, 
 				action="undock_done", 
 				isAtBase1=False, 
 				isMoving=True
@@ -449,65 +449,65 @@ class Roomba(Node):
 
 			# rotate amount
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="rotate_start",
 				isMoving=True
 			)
 			self.rotate_amnt(-pi/2)
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="rotate_done",
 				isMoving=True
 			)
 
 			# drive amount
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="drive_start",
 				isMoving=True
 			)
-			self.drive_amnt(1.3)
+			self.drive_amnt(1.2)
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="drive_done",
 				isMoving=True
 			)
 
 			# rotate amount
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="rotate_start",
 				isMoving=True
 			)
 			self.rotate_amnt(pi/2)
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="rotate_done",
 				isMoving=True
 			)
 
 			# drive amount
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="drive_start",
 				isMoving=True
 			)
 			self.drive_amnt(2.0)
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="drive_done",
 				isMoving=True
 			)
 			
 			# dock
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="dock_start",
 				isMoving=True
 			)
 			self.dock()
 			self.reportSender(
-				roomba_label_1,
+				label=roomba_label_1,
 				action="dock_done",
 				isMoving=False,
 				isAtBase2=True
@@ -516,14 +516,14 @@ class Roomba(Node):
 
 			### Actions for process 2 ###
 			self.reportSender(
-				roomba_label_2, 
+				label=roomba_label_2, 
 				action="undock_start", 
 				isAtBase2=True, 
 				isMoving=False
 			)
 			self.undock()
 			self.reportSender(
-				roomba_label_2, 
+				label=roomba_label_2, 
 				action="undock_done", 
 				isAtBase2=False, 
 				isMoving=True
@@ -531,78 +531,78 @@ class Roomba(Node):
 			
 			# drive amount
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="drive_start",
 				isMoving=True
 			)
 			self.drive_amnt(2.65)
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="drive_done",
 				isMoving=True
 			)
 			
 			# rotate amount
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="rotate_start",
 				isMoving=True
 			)
 			self.rotate_amnt(pi/2)
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="rotate_done",
 				isMoving=True
 			)
 
 			# drive amount
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="drive_start",
 				isMoving=True
 			)
 			self.drive_amnt(2.75)
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="drive_done",
 				isMoving=True
 			)
 			
 			# rotate amount
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="rotate_start",
 				isMoving=True
 			)
 			self.rotate_amnt(pi/2)
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="rotate_done",
 				isMoving=True
 			)
 
 			# drive amount
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="drive_start",
 				isMoving=True
 			)
-			self.drive_amnt(2.5)
+			self.drive_amnt(2.4)
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="drive_done",
 				isMoving=True
 			)
 			
 			# dock
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="dock_start",
 				isMoving=True
 			)
 			self.dock()
 			self.reportSender(
-				roomba_label_2,
+				label=roomba_label_2,
 				action="dock_done",
 				isMoving=False,
 				isAtBase3=True
@@ -610,14 +610,14 @@ class Roomba(Node):
 
 			### Actions for process 3 ###
 			self.reportSender(
-				roomba_label_3, 
+				label=roomba_label_3, 
 				action="undock_start", 
 				isAtBase3=True, 
 				isMoving=False
 			)
 			self.undock()
 			self.reportSender(
-				roomba_label_3, 
+				label=roomba_label_3, 
 				action="undock_done", 
 				isAtBase3=False, 
 				isMoving=True
@@ -625,91 +625,91 @@ class Roomba(Node):
 			
 			# drive amount
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="drive_start",
 				isMoving=True
 			)
 			self.drive_amnt(2.65)
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="drive_done",
 				isMoving=True
 			)
 			
 			# rotate amount
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="rotate_start",
 				isMoving=True
 			)
 			self.rotate_amnt(-pi/2)
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="rotate_done",
 				isMoving=True
 			)
 
 			# drive amount
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="drive_start",
 				isMoving=True
 			)
 			self.drive_amnt(2.60)
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="drive_done",
 				isMoving=True
 			)
 			
 			# rotate amount
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="rotate_start",
 				isMoving=True
 			)
 			self.rotate_amnt(-pi/6)
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="rotate_done",
 				isMoving=True
 			)
 
 			# drive amount
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="drive_start",
 				isMoving=True
 			)
 			self.drive_amnt(1.75)
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="drive_done",
 				isMoving=True
 			)
 
 			# rotate amount
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="rotate_start",
 				isMoving=True
 			)
 			self.rotate_amnt(4*pi/6)
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="rotate_done",
 				isMoving=True
 			)
 
 			# dock
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="dock_start",
 				isMoving=True
 			)
 			self.dock()
 			self.reportSender(
-				roomba_label_3,
+				label=roomba_label_3,
 				action="dock_done",
 				isMoving=False,
 				isAtBase1=True
