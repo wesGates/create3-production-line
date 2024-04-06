@@ -1,0 +1,11 @@
+/install/
+/log/
+/build/
+/src/tutorial_interfaces/
+/src/__pycache__/
+/src/misc/
+/src/py_pubsub/
+/src/ready_interfaces/
+/src/irobot_create_msgs/
+/src/BrokerCode_for_Classmates/
+/old_code/
