@@ -433,7 +433,7 @@ class Roomba(Node):
 
 			### Actions for process 1: Navigating from base1 to base 2 ###
 			# Undock and reset pose
-			self.reportSender(roomba_label_1, action="undock_start", isAtBase1=True, isMoving=False)
+			self.reportSender(label=roomba_label_1, action="undock_start", isAtBase1=True, isMoving=False)
 			self.undock()
 			self.reportSender(roomba_label_1, action="undock_done", isAtBase1=False, isMoving=True)
 
