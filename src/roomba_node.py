@@ -3,6 +3,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from rclpy.action.client import ActionClient
 from rclpy.action.client import GoalStatus
@@ -46,6 +48,15 @@ from dock_status_node import DockStatusMonitorNode
 from ir_status_node import IrMonitorNode
 from odometry_node import OdomNode
 
+
+# Wes' packages and nodes
+import my_interfaces
+from my_interfaces.msg import ReadyStatus
+from my_interfaces.srv import CheckReadiness
+from ReadyStatusPublisherNode import ReadyStatusPublisherNode
+from ReadinessTrackerNode import ReadinessTrackerNode
+
+
 # Globals
 start_note = [ AudioNote(frequency=600, max_runtime=Duration(sec=0, nanosec= 50000000))]
 end_note =   [ AudioNote(frequency=784, max_runtime=Duration(sec=0, nanosec= 50000000))]
@@ -69,29 +80,40 @@ dock_sensor = DockStatusMonitorNode(namespace)
 ir_sensor = IrMonitorNode(namespace)
 odometry_sensor = OdomNode(namespace)
 
+ready_status_publisher_node = ReadyStatusPublisherNode()
+readiness_tracker_node = ReadinessTrackerNode()
+
 class Roomba(Node):
 	def __init__(self, namespace):
 		super().__init__('roomba_node')
-		# Establish the node objects within the class for node operations
+
+		# Initialize node objects within the class for node operations
 		self.dock_sensor = dock_sensor
 		self.ir_sensor = ir_sensor
 		self.odometry_sensor = odometry_sensor
+		self.ready_status_publisher_node = ready_status_publisher_node
+		self.readiness_tracker_node = readiness_tracker_node
 
 		# Subscriptions: 
 		# Split up to compensate for noisy subscriptions
 		cb_dockstatus = MutuallyExclusiveCallbackGroup() # Perhaps unneeded since the dock_status_node takes care of the dockstatus
 		cb_ir = MutuallyExclusiveCallbackGroup()
 		cb_pose = MutuallyExclusiveCallbackGroup()
+		cb_ready_status = MutuallyExclusiveCallbackGroup()
+
 
 		self.dock_status_sub_ = self.create_subscription(Bool, f'/{namespace}/check_dock_status', 
 												self.dock_status_callback, 10, callback_group=cb_dockstatus)
-		# self.ir_opcode_sub_ = self.create_subscription(IrOpcode, f'/{namespace}/ir_opcode_number', 
-		# 										self.ir_opcode_callback, qos_profile_sensor_data, callback_group=cb_ir)
+
 		self.ir_opcode_sub_ = self.create_subscription(String, f'/{namespace}/ir_opcode_number', 
 														self.ir_opcode_callback, qos_profile_sensor_data, callback_group=cb_ir)
 
 		self.current_pose_sub_ = self.create_subscription(PoseStamped, f'/{namespace}/pose_stamped', 
 												self.pose_callback, qos_profile_sensor_data, callback_group=cb_pose)
+
+		self.ready_status_subscription_ = self.create_subscription(ReadyStatus, 'robot_ready_status', 
+												self.ready_status_callback, 10, callback_group=cb_ready_status)
+		
 
 		# Actions:
 		cb_Action = MutuallyExclusiveCallbackGroup()
@@ -118,11 +140,133 @@ class Roomba(Node):
 		while not self.reset_pose_srv.wait_for_service(timeout_sec=1.0):
 			self.get_logger().info('ResetPose service not available, waiting again...')
 
+		# Service for checking the status of any robot
+		self.client = self.create_client(CheckReadiness, 'check_readiness')
+
+		while not self.client.wait_for_service(timeout_sec=1.0):
+			self.get_logger().info('Service not available, waiting again...')
+		print("Readiness Tracker is Available. ")
+
 		# Variable Initialization
 		self.latest_dock_status = True #########!!!!!!!!!!!!! Was None
 		self.latest_pose_stamped = None
 		self.latest_ir_opcode = None
-		self.ir_opcode_history = deque(maxlen=20)  # A deque to store the history of opcodes
+		self.ir_opcode_history = deque(maxlen=20)  # A deque to store the history of opcodes in the auto-docking function
+
+		# variable that stores the robot ready status information
+		# Ready statuses are updated in the callback functions.
+		self.latest_ready_status = None
+
+
+	##############################################################################################
+	""" General ready status services and publishing stuff starts here """			
+	##############################################################################################		
+	def ready_status_callback(self, msg):
+		"""
+		The other nodes don't have this function, yet. 
+		I think they will need it in order to do their own wait_for_all_ready operations.
+		"""
+		# Update the latest ready statuses with the message received from the 'robot_ready_status' topic
+		self.latest_ready_status = msg
+		# self.roomba_status = self.latest_ready_status.roomba
+
+		# DEBUGGING
+		print("DEBUG: Start of RoombaNode callback...")
+		print("msg.roomba_base2 : 	", msg.roomba_base2)
+		print("msg.beaker : 		", msg.beaker)
+		print("msg.beaker_conv :	",msg.beaker_conv)
+		print("msg.bunsen_conv:  	",msg.bunsen_conv)
+		print("msg.bunsen : 		", msg.bunsen)
+		print("msg.roomba_base3 :	", msg.roomba_base3)
+		print("End of RoombaNode callback \n")
+
+		# self.get_logger().info(f"Received /robot_ready_status: {self.latest_ready_status}")
+
+
+	def check_robot_status(self, other_robot, expected_status):
+		self.get_logger().info(f"Checking if {other_robot} is {'ready' if expected_status else 'not ready'}.")
+
+		while True:
+			future = self.send_request(other_robot)
+			rclpy.spin_until_future_complete(self, future)
+
+			if future.result() is not None:
+				actual_status = future.result().ready
+				if actual_status == expected_status:
+					print("SUCCESS")
+					self.get_logger().info(f'{other_robot} status matches the expected status: {expected_status}.')
+					break  # Exit the loop if the status matches
+				else:
+					# This message will now reflect the actual status received and the expected status.
+					self.get_logger().info(f'{other_robot} status does not match. Expected: {expected_status}. Actual: {actual_status}. Retrying...')
+					time.sleep(1)  # Wait for a bit before retrying
+			else:
+				self.get_logger().error(f'Exception while calling service: {future.exception()}')
+				time.sleep(1)  # Wait for a bit before retrying in case of an exception
+
+	def display_robot_statuses(self):
+		# DUBUGGING: Used in key commander to display the robot states on keypress in the terminal
+		try: 
+			self.ready_status_publisher_node.display_robot_statuses()
+		except:
+			self.get_logger().error(f"Error in display: {error}") # Error logging
+
+	def publish_robot_status(self):
+		self.ready_status_publisher_node.publish_ready_status()
+		self.get_logger().info('Published the updated ready status')
+
+
+	##############################################################################################
+	""" Robot-specific status checking starts here. """			
+	##############################################################################################
+
+	# IMPORTANT! Always set your robot's status before checking other robots
+	# NOTE: Always set crx10 statuses to False after picking up dice block
+
+
+	def check_base2(self):
+
+		print("Setting roomba_base2 status to True")
+		self.set_roomba_base2_true()
+
+		print("Check if beaker is ready at base2")
+		self.check_robot_status('beaker', True)
+
+		print("!!! Both robots are ready !!!")
+
+	def check_dice_block_handoff_base2(self):
+
+		print("Setting roomba_base2 status to True")
+		self.set_roomba_base2_true() # May be unneccessary since it should already be true
+
+		print("Checking whether beaker has retrieved the block and moved away")
+		self.check_robot_status('beaker', False)
+
+		print("!!! Both robots are ready !!!")
+
+
+	# def check_base3(self):
+
+	# 	print("Setting roomba_base3 status to True")
+	# 	self.set_roomba_base3_true()
+
+	# 	print("Check if bunsen is ready at base3")
+	# 	self.check_robot_status('bunsen', True)
+
+	# 	print("!!! Both robots are ready !!!")
+
+	# def check_dice_block_handoff_base3(self):
+
+	# 	print("Setting roomba_base3 status to True")
+	# 	self.set_roomba_base3_true() # May be unneccessary since it should already be true
+
+	# 	# Check whether beaker has retrieved the dice block and moved away
+	# 	print("Checking whether bunen has the block before moving to base1")
+	# 	self.check_robot_status('bunsen', False)
+
+	# 	print("!!! Both robots are ready !!!")
+
+
 
 	def reportSender(self, label="Undefined", action="Undefined",
 					isAtBase1=False, isAtBase2=False, isAtBase3=False,
@@ -560,6 +704,9 @@ if __name__ == '__main__':
 	exec.add_node(ir_sensor)
 	exec.add_node(odometry_sensor)
 
+	exec.add_node(ready_status_publisher_node)
+	exec.add_node(readiness_tracker_node)
+
 	mqttc.loop_start()
 
 	time.sleep(0.1)
@@ -582,4 +729,53 @@ if __name__ == '__main__':
 		exec.shutdown()
 		roomba.destroy_node()
 		rclpy.try_shutdown()
+
+# # The following Key Commander is used for manually checking outputs in the terminal
+# if __name__ == '__main__':
+
+# 	roomba = RoombaNode()
+# 	exec = MultiThreadedExecutor(8)
+
+# 	exec.add_node(roomba)
+# 	exec.add_node(ready_status_publisher_node)
+# 	exec.add_node(readiness_tracker_node)
+
+
+# 	time.sleep(1.0)
+	
+# 	keycom = KeyCommander([
+# 		(KeyCode(char='u'), roomba.main), 
+# 		(KeyCode(char='v'), roomba.display_robot_statuses),
+# 		(KeyCode(char='r'), roomba.set_roomba_base2_true),
+# 		(KeyCode(char='d'), roomba.set_roomba_base2_false),
+# 		(KeyCode(char='t'), roomba.set_roomba_base3_true),
+# 		(KeyCode(char='f'), roomba.set_roomba_base3_false),
+
+# 		(KeyCode(char='`'), roomba.check_base2),
+# 		(KeyCode(char='1'), roomba.check_dice_block_handoff_base2),
+# 		(KeyCode(char='2'), roomba.check_base3),
+# 		(KeyCode(char='3'), roomba.check_dice_block_handoff_base3),
+
+
+# 	])
+# 	# print(" Press 'u' to intitiate main routine") # This will be the navigation code
+# 	print(" Press 'u' to intitiate main routine") # TESTING W/ PASSING VARS (KEY COMM ISSUES)
+# 	print(" Press 'v' to display all robot states in the text file")
+# 	print(" Press 'r' to set the roomba_base2's status as 'True'")
+# 	print(" Press 'd' to set the roomba_base2's status as 'False'")
+# 	print(" Press 't' to set the roomba_base3's status as 'True'")
+# 	print(" Press 'f' to set the roomba_base3's status as 'False'")
+# 	print(" Press 'c' to check the readiness of beaker")
+
+
+# 	try:
+# 		exec.spin()  # execute Roomba callbacks until shutdown or destroy is called
+# 	except KeyboardInterrupt:
+# 		print("KeyboardInterrupt, shutting down.")
+# 	except Exception as error:
+# 		print(f"Unexpected error: {error}")
+# 	finally:
+# 		exec.shutdown()
+# 		roomba.destroy_node()
+# 		rclpy.try_shutdown()
 
